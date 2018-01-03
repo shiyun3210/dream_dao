@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:p="http://www.springframework.org/schema/p"
+	xmlns:mvc="http://www.springframework.org/schema/mvc" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:util="http://www.springframework.org/schema/util"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+	http://www.springframework.org/schema/beans/spring-beans-4.0.xsd http://www.springframework.org/schema/context 
+	http://www.springframework.org/schema/context/spring-context-4.0.xsd http://www.springframework.org/schema/mvc 
+	http://www.springframework.org/schema/mvc/spring-mvc-4.0.xsd http://www.springframework.org/schema/util 
+	http://www.springframework.org/schema/util/spring-util-4.0.xsd">
+
+	<!-- 激活@Controller模式 -->
+	<mvc:annotation-driven>
+		<mvc:message-converters register-defaults="true">
+			<bean
+				class="org.springframework.http.converter.json.MappingJackson2HttpMessageConverter">
+				<property name="prefixJson" value="false" />
+				<property name="supportedMediaTypes">
+					<list>
+						<value>application/json</value>
+						<value>text/json</value>
+					</list>
+				</property>
+			</bean>
+		</mvc:message-converters>
+	</mvc:annotation-driven>
+<mvc:resources mapping="/crossdomain.xml" location="/" />
+	<!-- 文件上传 -->
+	<bean id="multipartResolver"
+		class="org.springframework.web.multipart.commons.CommonsMultipartResolver">
+		<!-- 编码方式 -->
+		<property name="defaultEncoding" value="UTF-8" />
+		<!-- 最大上传文件大小10M = 10485760 byte = 10*1024*1024 byte 文件大小限制将在控制器中 -->
+		<!-- 最大文件大小，-1为无限止(-1),注意maxUploadSize属性的限制不是针对单个文件，而是所有文件的容量之和 -->
+		<property name="maxUploadSize" value="-1" />
+		<!-- 最大占用内存大小 10M = 10485760 byte = 10*1024*1024 byte -->
+		<property name="maxInMemorySize" value="10485760" />
+
+	</bean>
+
+</beans>

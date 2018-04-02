@@ -33,6 +33,9 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
 
+import com.alibaba.simpleimage.ImageWrapper;
+import com.alibaba.simpleimage.SimpleImageException;
+import com.alibaba.simpleimage.util.ImageReadHelper;
 import com.fm.file.util.DateTools;
 import com.fm.file.util.FileUtils;
 import com.fm.file.web.constants.SysConstants;
@@ -54,6 +57,11 @@ public class FastDFSController {
 	 * 当前jgp 图片 输出质量，质量越高，图片越大
 	 */
 	private static final double IMG_QUALITY = 0.8d;
+	
+	/**
+	 * 当前jgp 图片 输出质量，质量越高，图片越大
+	 */
+	private static final double IMG_QUALITY_09 = 1.0d;
 	
 	private static final double DEFAULT_SPEC = 1200;
 	
@@ -115,6 +123,7 @@ public class FastDFSController {
 	 * @param scalewidth 压缩目标尺寸 宽度
 	 * @param scaleheight 压缩目标尺寸 高度
 	 * @param iswatermark 图片是否加水印 0 否 1 是
+	 * @param isorgin 是否原图上传 0 否 1 是
 	 * @param request
 	 * @param response
 	 * @return
@@ -122,7 +131,8 @@ public class FastDFSController {
 	@RequestMapping(value="resource/upload",method=RequestMethod.POST)
 	public @ResponseBody Object fastDFSUploadFile(@RequestParam(required=false,defaultValue="1") int uptype,@RequestParam(required=false,defaultValue="") String imgData,
 			@RequestParam(required=false,defaultValue="") String filetype,@RequestParam(required=false,defaultValue="") String filename,
-			@RequestParam(required=false,defaultValue="0") int scalewidth,@RequestParam(required=false,defaultValue="0") int scaleheight,@RequestParam(required=false,defaultValue="0") int iswatermark,
+			@RequestParam(required=false,defaultValue="0") int scalewidth,@RequestParam(required=false,defaultValue="0") int scaleheight,
+			@RequestParam(required=false,defaultValue="0") int iswatermark,@RequestParam(required=false,defaultValue="0") int isorgin,
 			HttpServletRequest request,HttpServletResponse response){
 		//解决 ajax 跨域访问 请求无响应
 		response.addHeader("Access-Control-Allow-Headers", "origin, content-type, accept, x-requested-with");
@@ -161,9 +171,10 @@ public class FastDFSController {
 					originalFilename = file.getOriginalFilename();
 					String fileType = FileUtils.getFileType(originalFilename);
 					if(fileType.equals("image")){
-						byte[] ins = scalingImage(file.getInputStream(), scalewidth, scaleheight,iswatermark);
+						String fileExtName = "jpg";
+						byte[] ins = scalingImage(file.getInputStream(), scalewidth, scaleheight,iswatermark,isorgin,fileExtName);
 						if(ins!=null&&ins.length>0){
-							StorePath resultFile = generateStorageClient.uploadFile(trackerClient.getStoreStorage().getGroupName(), new ByteArrayInputStream(ins), ins.length, "jpg");
+							StorePath resultFile = generateStorageClient.uploadFile(trackerClient.getStoreStorage().getGroupName(), new ByteArrayInputStream(ins), ins.length,fileExtName);
 							if(resultFile!=null){
 								fileMap.put("name", file.getName());
 								fileMap.put("originalFilename", originalFilename);
@@ -204,7 +215,10 @@ public class FastDFSController {
 				try {
 					byte[] bytes = decoder.decodeBuffer(imgData);
 					InputStream is = new ByteArrayInputStream(bytes);
-					byte[] ins = scalingImage(is, scalewidth, scaleheight,iswatermark);
+					if("".equals(filetype)){
+						filetype = "jpg";
+					}
+					byte[] ins = scalingImage(is, scalewidth, scaleheight,iswatermark,isorgin,filetype);
 					if(ins!=null&&ins.length>0){
 						StorePath resultFile = generateStorageClient.uploadFile(trackerClient.getStoreStorage().getGroupName(), new ByteArrayInputStream(ins), ins.length, filetype);
 						if(resultFile!=null){
@@ -243,20 +257,43 @@ public class FastDFSController {
 	 * @param scaleHeight
 	 * @return
 	 */
-	private static byte[] scalingImage(InputStream in,int scaleWidth,int scaleHeight,int iswatermark){
+	private static byte[] scalingImage(InputStream in,int scaleWidth,int scaleHeight,int iswatermark,int isorgin,String fileExtName){
 		try {
-			BufferedImage sourceImg = ImageIO.read(in);
-			final int height = sourceImg.getHeight();
-	        final int width = sourceImg.getWidth();
+//			BufferedImage sourceImg = ImageIO.read(in);
+			int height = 0;
+	        int width = 0;
+	        BufferedImage sourceImg = null;
+			try {
+				ImageWrapper imageWrapper = ImageReadHelper.read(in);
+				height = imageWrapper.getHeight();
+				width = imageWrapper.getWidth();
+				sourceImg = imageWrapper.getAsBufferedImage();
+			} catch (SimpleImageException e) {
+				e.printStackTrace();
+			}
 	        // 在内存当中生成缩略图
 	        ByteArrayOutputStream out = new ByteArrayOutputStream();
 	        double spec = 0;
 	        double scaleSize = 0;
-	        if(scaleWidth==0&&scaleHeight==0){
-	        	spec = DEFAULT_SPEC;
-	        	if((Math.abs(spec-width)>IMG_SCALE_WH_INTERVAL&&width>spec)||(Math.abs(spec-height)>IMG_SCALE_WH_INTERVAL&&height>spec)){
-	        		scaleSize = new BigDecimal(spec/(double)(width>height?width:height)).setScale(2,BigDecimal.ROUND_HALF_EVEN).doubleValue();
-				}
+	        if(isorgin==1){
+	        	scaleSize = 0;
+	        }else if(scaleWidth==0&&scaleHeight==0){
+	        	if((width/height)>3){
+	        		spec = scaleHeight;
+		        	if(Math.abs(spec-height)>IMG_SCALE_WH_INTERVAL&&height>spec){
+		        		scaleSize = new BigDecimal(spec/((double)height)).setScale(2,BigDecimal.ROUND_HALF_EVEN).doubleValue();
+					}
+	        	}else if((height/width)>3){
+	        		spec = scaleWidth;
+		        	if(Math.abs(spec-width)>IMG_SCALE_WH_INTERVAL&&width>spec){
+		        		scaleSize = new BigDecimal(spec/((double)width)).setScale(2,BigDecimal.ROUND_HALF_EVEN).doubleValue();
+		        	}
+	        	}else{
+	        		spec = DEFAULT_SPEC;
+		        	if((Math.abs(spec-width)>IMG_SCALE_WH_INTERVAL&&width>spec)||(Math.abs(spec-height)>IMG_SCALE_WH_INTERVAL&&height>spec)){
+		        		scaleSize = new BigDecimal(spec/(double)(width>height?width:height)).setScale(2,BigDecimal.ROUND_HALF_EVEN).doubleValue();
+					}
+	        	}
 	        }else if(scaleWidth==0){
 	        	spec = scaleHeight;
 	        	if(Math.abs(spec-height)>IMG_SCALE_WH_INTERVAL&&height>spec){
@@ -276,16 +313,16 @@ public class FastDFSController {
 	        if(scaleSize==0){
 	        	if(iswatermark==1){
 	        		File wmFile = new File(SysConstants.WATERMARK_IMG_CN_PATH);
-	        		Thumbnails.of(sourceImg).size(width, height).watermark(Positions.CENTER, ImageIO.read(wmFile), 1f).outputFormat("jpg").outputQuality(IMG_QUALITY).toOutputStream(out);
+	        		Thumbnails.of(sourceImg).size(width, height).watermark(Positions.CENTER, ImageIO.read(wmFile), 1f).outputFormat(fileExtName).outputQuality(IMG_QUALITY_09).toOutputStream(out);
 	        	}else{
-	        		Thumbnails.of(sourceImg).size(width, height).outputFormat("jpg").outputQuality(IMG_QUALITY).toOutputStream(out);
+	        		Thumbnails.of(sourceImg).size(width, height).outputFormat(fileExtName).outputQuality(IMG_QUALITY_09).toOutputStream(out);
 	        	}
 	        }else {
 	        	if(iswatermark==1){
 	        		File wmFile = new File(SysConstants.WATERMARK_IMG_CN_PATH);
-	        		Thumbnails.of(sourceImg).scale(scaleSize).watermark(Positions.CENTER, ImageIO.read(wmFile), 1f).outputFormat("jpg").outputQuality(IMG_QUALITY).toOutputStream(out);
+	        		Thumbnails.of(sourceImg).scale(scaleSize).watermark(Positions.CENTER, ImageIO.read(wmFile), 1f).outputFormat(fileExtName).outputQuality(IMG_QUALITY).toOutputStream(out);
 	        	}else{
-	        		Thumbnails.of(sourceImg).scale(scaleSize).outputFormat("jpg").outputQuality(IMG_QUALITY).toOutputStream(out);
+	        		Thumbnails.of(sourceImg).scale(scaleSize).outputFormat(fileExtName).outputQuality(IMG_QUALITY).toOutputStream(out);
 	        	}
 	        }
 	        return out.toByteArray();
